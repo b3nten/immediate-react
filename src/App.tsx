@@ -6,7 +6,7 @@ export default class App extends Immediate {
   view() {
     return (
       <div className="is-center" style={{ flexDirection: "column" }}>
-        <h1>Immediate</h1>
+        <h1>Immediate Mode React</h1>
         <p>This is all the React code required to create the following interactive UI.</p>
         <pre>
           {`let count = 0;
