@@ -50,37 +50,47 @@ function compare(a: any[], b: any[], cache?: number) {
 }
 
 export class Immediate extends Component {
-  #__hasMounted = false;
-  #__render: () => any;
-  #__previousValues: any[] = [];
-  #__mountCallback: void | (() => void) = void 0;
-  #__intersectionObserver: IntersectionObserver | undefined = void 0;
-  #__isVisible = true;
+  #internalRender: () => any;
+  #previousRenderValues: any[] = [];
+
+  #hasMounted = false;
+  #mountCallbacks: Set<() => void> = new Set();
+  #unmountCallbacks: Set<() => void> = new Set();
+  #mountCleanupCallback: void | (() => void) = void 0;
+
+  #intersectionObserver: IntersectionObserver | undefined = void 0;
+  #isVisible = true;
 
   protected OnlyRenderWhenInViewportRef = createRef<any>();
 
   constructor(props: any) {
     super(props);
     // assign render function to internal #__render
-    this.#__render = this.render;
+    this.#internalRender = this.render;
     // call render function to assign public render function to initial result
-    this.#__render();
+    this.#internalRender();
     // start update loop
     const update = () => {
       // if not visible, don't update
-      if (!this.#__isVisible) return requestAnimationFrame(update);
+      if (!this.#isVisible) return requestAnimationFrame(update);
       // call render function to diff
-      this.#__render();
+      this.#internalRender();
       requestAnimationFrame(update);
     };
     requestAnimationFrame(update);
   }
 
-  mount?(): void | (() => void);
-  unmount?(): void;
+  protected html = (strings: TemplateStringsArray, ...values: any[]) => {
+    if (!compare(this.#previousRenderValues, values)) {
+      this.#previousRenderValues = values;
+      this.render = () => htm(strings, ...values);
+      this.#hasMounted && this.forceUpdate();
+    }
+  };
 
-  #mountCallbacks: Set<() => void> = new Set();
-  #unmountCallbacks: Set<() => void> = new Set();
+  shouldComponentUpdate(): boolean {
+    return false;
+  }
 
   public onMount(callback: () => void) {
     this.#mountCallbacks.add(callback);
@@ -88,6 +98,7 @@ export class Immediate extends Component {
       this.#mountCallbacks.delete(callback);
     };
   }
+
   public onUnmount(callback: () => void) {
     this.#unmountCallbacks.add(callback);
     return () => {
@@ -96,59 +107,47 @@ export class Immediate extends Component {
   }
 
   componentDidMount() {
-    if (this.#__hasMounted) {
-      return console.warn("Immediate component has already mounted");
+    if (this.#hasMounted) {
+      return void console.warn("Immediate component has already mounted");
     }
-    this.#__hasMounted = true;
-    if (this.mount && typeof this.mount === "function") {
-      this.#__mountCallback = this.mount();
+    this.#hasMounted = true;
+    if (typeof this.mount === "function") {
+      this.#mountCleanupCallback = this.mount();
     }
     for (const callback of this.#mountCallbacks) {
       callback();
     }
-    if (
-      this.OnlyRenderWhenInViewportRef.current &&
-      this.OnlyRenderWhenInViewportRef.current instanceof HTMLElement
-    ) {
-      this.#__intersectionObserver = new IntersectionObserver((entries) => {
+    if (this.OnlyRenderWhenInViewportRef.current instanceof HTMLElement) {
+      this.#intersectionObserver = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            this.#__isVisible = true;
+            this.#isVisible = true;
           } else {
-            this.#__isVisible = false;
+            this.#isVisible = false;
           }
         });
       }, {
         rootMargin: "100px",
       });
-      this.#__intersectionObserver.observe(
+      this.#intersectionObserver.observe(
         this.OnlyRenderWhenInViewportRef.current,
       );
     }
   }
 
   componentWillUnmount() {
-    this.#__hasMounted = false;
-    if (this.unmount && typeof this.unmount === "function") {
-      this.#__mountCallback && this.#__mountCallback();
+    this.#hasMounted = false;
+    if (typeof this.unmount === "function") {
+      this.#mountCleanupCallback && this.#mountCleanupCallback();
       this.unmount();
     }
     for (const callback of this.#unmountCallbacks) {
       callback();
     }
-    this.#__intersectionObserver?.disconnect();
+    this.#intersectionObserver?.disconnect();
   }
 
-  // prevent react from updating it based on props/state (we handle that ourselves)
-  shouldComponentUpdate(): boolean {
-    return false;
-  }
+  mount?(): void | (() => void);
 
-  protected html = (strings: TemplateStringsArray, ...values: any[]) => {
-    if (!compare(this.#__previousValues, values)) {
-      this.#__previousValues = values;
-      this.render = () => htm(strings, ...values);
-      this.#__hasMounted && this.forceUpdate();
-    }
-  };
+  unmount?(): void;
 }
