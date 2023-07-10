@@ -50,8 +50,9 @@ function compare(a: any[], b: any[], cache?: number) {
 }
 
 export class Immediate extends Component {
-  #__renderValues: any[] = [];
   #__hasMounted = false;
+  #__render: () => any;
+  #__previousValues: any[] = [];
   #__mountCallback: void | (() => void) = void 0;
   #__intersectionObserver: IntersectionObserver | undefined = void 0;
   #__isVisible = true;
@@ -60,15 +61,16 @@ export class Immediate extends Component {
 
   constructor(props: any) {
     super(props);
-    let previous, cache = 0;
+    // assign render function to internal #__render
+    this.#__render = this.render;
+    // call render function to assign public render function to initial result
+    this.#__render();
+    // start update loop
     const update = () => {
+      // if not visible, don't update
       if (!this.#__isVisible) return requestAnimationFrame(update);
-      previous = this.#__renderValues;
-      this.render();
-      if (!compare(previous, this.#__renderValues, cache)) {
-        console.log("rerendering");
-        this.#__hasMounted && this.forceUpdate();
-      }
+      // call render function to diff
+      this.#__render();
       requestAnimationFrame(update);
     };
     requestAnimationFrame(update);
@@ -94,6 +96,9 @@ export class Immediate extends Component {
   }
 
   componentDidMount() {
+    if (this.#__hasMounted) {
+      return console.warn("Immediate component has already mounted");
+    }
     this.#__hasMounted = true;
     if (this.mount && typeof this.mount === "function") {
       this.#__mountCallback = this.mount();
@@ -101,7 +106,10 @@ export class Immediate extends Component {
     for (const callback of this.#mountCallbacks) {
       callback();
     }
-    if (this.OnlyRenderWhenInViewportRef.current && this.OnlyRenderWhenInViewportRef.current instanceof HTMLElement) {
+    if (
+      this.OnlyRenderWhenInViewportRef.current &&
+      this.OnlyRenderWhenInViewportRef.current instanceof HTMLElement
+    ) {
       this.#__intersectionObserver = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
@@ -113,7 +121,9 @@ export class Immediate extends Component {
       }, {
         rootMargin: "100px",
       });
-      this.#__intersectionObserver.observe(this.OnlyRenderWhenInViewportRef.current);
+      this.#__intersectionObserver.observe(
+        this.OnlyRenderWhenInViewportRef.current,
+      );
     }
   }
 
@@ -135,7 +145,10 @@ export class Immediate extends Component {
   }
 
   protected html = (strings: TemplateStringsArray, ...values: any[]) => {
-    this.#__renderValues = values;
-    return htm(strings, ...values);
+    if (!compare(this.#__previousValues, values)) {
+      this.#__previousValues = values;
+      this.render = () => htm(strings, ...values);
+      this.#__hasMounted && this.forceUpdate();
+    }
   };
 }
