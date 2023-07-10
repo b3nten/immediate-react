@@ -53,48 +53,6 @@ export class Immediate extends Component {
   #__hasMounted = false;
   #__mountCallback: void | (() => void) = void 0;
 
-  #mountCallbacks: Set<() => void> = new Set();
-  public onMount(callback: () => void) {
-    this.#mountCallbacks.add(callback);
-    return () => {
-      this.#mountCallbacks.delete(callback);
-    };
-  }
-
-  #unmountCallbacks: Set<() => void> = new Set();
-  public onUnmount(callback: () => void) {
-    this.#unmountCallbacks.add(callback);
-    return () => {
-      this.#unmountCallbacks.delete(callback);
-    };
-  }
-
-  componentDidMount() {
-    this.#__hasMounted = true;
-    if (this.mount && typeof this.mount === "function") {
-      this.#__mountCallback = this.mount();
-    }
-    for (const callback of this.#mountCallbacks) {
-      callback();
-    }
-  }
-
-  componentWillUnmount() {
-    this.#__hasMounted = false;
-    if (this.unmount && typeof this.unmount === "function") {
-      this.#__mountCallback && this.#__mountCallback();
-      this.unmount();
-    }
-    for (const callback of this.#unmountCallbacks) {
-      callback();
-    }
-  }
-
-  protected html = (strings: TemplateStringsArray, ...values: any[]) => {
-    this.#__renderValues = values;
-    return htm(strings, ...values);
-  };
-
   constructor(props: any) {
     super(props);
     let previous, cache = 0;
@@ -112,4 +70,45 @@ export class Immediate extends Component {
 
   mount?(): void | (() => void);
   unmount?(): void;
+
+  #mountCallbacks: Set<() => void> = new Set();
+  #unmountCallbacks: Set<() => void> = new Set();
+
+  public onMount(callback: () => void) {
+    this.#mountCallbacks.add(callback);
+    return () => {
+      this.#mountCallbacks.delete(callback);
+    };
+  }
+  public onUnmount(callback: () => void) {
+    this.#unmountCallbacks.add(callback);
+    return () => {
+      this.#unmountCallbacks.delete(callback);
+    };
+  }
+
+  componentDidMount() {
+    this.#__hasMounted = true;
+    if (this.mount && typeof this.mount === "function") {
+      this.#__mountCallback = this.mount();
+    }
+    for (const callback of this.#mountCallbacks) {
+      callback();
+    }
+  }
+  componentWillUnmount() {
+    this.#__hasMounted = false;
+    if (this.unmount && typeof this.unmount === "function") {
+      this.#__mountCallback && this.#__mountCallback();
+      this.unmount();
+    }
+    for (const callback of this.#unmountCallbacks) {
+      callback();
+    }
+  }
+
+  protected html = (strings: TemplateStringsArray, ...values: any[]) => {
+    this.#__renderValues = values;
+    return htm(strings, ...values);
+  };
 }
