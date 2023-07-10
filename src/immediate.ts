@@ -1,4 +1,4 @@
-import { Component } from "react";
+import { Component, createRef } from "react";
 import { html as htm } from "htm/react";
 import { deepEqual } from "fast-equals";
 
@@ -9,16 +9,17 @@ function compareTwo(a: any, b: any): boolean {
   if (a !== b) {
     // if both are objects
     if (typeof a === "object" && typeof b === "object") {
-      if("$$typeof" in a && "$$typeof" in b){
-        if(a.type.name === b.type.name){
+      // check if they're react nodes
+      if ("$$typeof" in a && "$$typeof" in b && "type" in a && "type" in b) {
+        if (a.type.name === b.type.name) {
           return true;
         } else {
           return false;
         }
       }
       // check deep equality
-      if (!deepEqual(a, b)){
-        console.log(a)
+      if (!deepEqual(a, b)) {
+        console.log(a);
         return false;
       }
       return true;
@@ -52,15 +53,20 @@ export class Immediate extends Component {
   #__renderValues: any[] = [];
   #__hasMounted = false;
   #__mountCallback: void | (() => void) = void 0;
+  #__intersectionObserver: IntersectionObserver | undefined = void 0;
+  #__isVisible = true;
+
+  protected OnlyRenderWhenInViewportRef = createRef<any>();
 
   constructor(props: any) {
     super(props);
     let previous, cache = 0;
     const update = () => {
+      if (!this.#__isVisible) return requestAnimationFrame(update);
       previous = this.#__renderValues;
       this.render();
       if (!compare(previous, this.#__renderValues, cache)) {
-        console.log("rerendering")
+        console.log("rerendering");
         this.#__hasMounted && this.forceUpdate();
       }
       requestAnimationFrame(update);
@@ -95,7 +101,22 @@ export class Immediate extends Component {
     for (const callback of this.#mountCallbacks) {
       callback();
     }
+    if (this.OnlyRenderWhenInViewportRef.current && this.OnlyRenderWhenInViewportRef.current instanceof HTMLElement) {
+      this.#__intersectionObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            this.#__isVisible = true;
+          } else {
+            this.#__isVisible = false;
+          }
+        });
+      }, {
+        rootMargin: "100px",
+      });
+      this.#__intersectionObserver.observe(this.OnlyRenderWhenInViewportRef.current);
+    }
   }
+
   componentWillUnmount() {
     this.#__hasMounted = false;
     if (this.unmount && typeof this.unmount === "function") {
@@ -105,6 +126,12 @@ export class Immediate extends Component {
     for (const callback of this.#unmountCallbacks) {
       callback();
     }
+    this.#__intersectionObserver?.disconnect();
+  }
+
+  // prevent react from updating it based on props/state (we handle that ourselves)
+  shouldComponentUpdate(): boolean {
+    return false;
   }
 
   protected html = (strings: TemplateStringsArray, ...values: any[]) => {
